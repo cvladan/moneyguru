@@ -14,7 +14,7 @@ from ...model.amount import convert_amount
 from ...model.amount import Amount
 from ...model.currency import (
     Currencies, RateProviderUnavailable, RatesDB)
-from ...plugin import boc_currency_provider
+from ...plugin import frankfurter_provider
 
 def slow_down(func):
     def wrapper(*args, **kwargs):
@@ -113,18 +113,18 @@ def exception_raiser(exception):
 def test_no_internet(monkeypatch):
     # No crash occur if the computer don't have access to internet.
     from socket import gaierror
-    monkeypatch.setattr(boc_currency_provider, 'urlopen', exception_raiser(gaierror()))
+    monkeypatch.setattr(frankfurter_provider, 'urlopen', exception_raiser(gaierror()))
     with raises(RateProviderUnavailable):
-        boc_currency_provider.BOCProviderPlugin().wrapped_get_currency_rates(
+        frankfurter_provider.FrankfurterProviderPlugin().wrapped_get_currency_rates(
             'USD', date(2008, 5, 20), date(2008, 5, 20)
         )
 
 def test_connection_timeout(monkeypatch):
     # No crash occur the connection times out.
     from socket import error
-    monkeypatch.setattr(boc_currency_provider, 'urlopen', exception_raiser(error()))
+    monkeypatch.setattr(frankfurter_provider, 'urlopen', exception_raiser(error()))
     with raises(RateProviderUnavailable):
-        boc_currency_provider.BOCProviderPlugin().wrapped_get_currency_rates(
+        frankfurter_provider.FrankfurterProviderPlugin().wrapped_get_currency_rates(
             'USD', date(2008, 5, 20), date(2008, 5, 20)
         )
 

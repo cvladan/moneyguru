@@ -24,6 +24,32 @@ Mac/Win build-ove, ali kod sam može da se izgradi. Uz to je već zakrpljen za m
 - Homebrew: `pkg-config`, `gettext`, `sqlite`, `python@3.12`
 - Build Python: **3.12** (PyQt5 ima wheel-ove; sistemski 3.14 je prenov za PyQt5)
 
+## Kursevi valuta (currency API)
+
+Kursevi se povlače sa **Frankfurter** ([github.com/lineofflight/frankfurter](https://github.com/lineofflight/frankfurter)) —
+besplatan, open-source, ECB-bazni API bez ključa. Koristimo javnu instancu
+`https://api.frankfurter.dev/v2/rates` (160+ valuta uključujući RSD, podaci od 1999).
+
+Frankfurter se **može i self-hostovati** preko Docker-a ako želiš da zahtevi ostanu u tvojoj
+infrastrukturi:
+
+```bash
+# ephemerna baza (za probu)
+docker run -d -p 8080:8080 lineofflight/frankfurter
+# ili sa perzistentnim SQLite-om
+docker run -d -p 8080:8080 -e DATABASE_URL="sqlite:///data/db.sqlite3" \
+  -v ./data:/data --pull always lineofflight/frankfurter
+```
+
+Zatim usmeri moneyGuru na svoju instancu env varijablom:
+
+```bash
+MG_FRANKFURTER_URL="http://localhost:8080/v2/rates" make run
+```
+
+(Nova instanca pri prvom pokretanju radi „backfill", pa neki endpointi nakratko mogu vraćati
+prazne podatke. Detalji: https://frankfurter.dev/deploy)
+
 ## Build na macOS — uputstvo
 
 > Popunjava se kako rešavamo korak po korak. Vidi `AGENTS.md` za detaljna tehnička objašnjenja.
@@ -66,6 +92,10 @@ QT_QPA_PLATFORM=offscreen python ./run.py   # mora startovati event loop bez gre
 - **2026-05-21** — Dodata **svetla tema** (Fusion + svetla paleta) u `support/run.template.py`
   jer je app nasleđivao macOS Dark mode. Vraćanje na sistemsku temu: `MG_THEME=system`
   (ili `MG_THEME=dark`).
+- **2026-05-21** — Rešen `Fetching of <valuta> failed` spam: kursevi se sada povlače sa
+  **Frankfurter v2** (ECB-bazni, besplatan, bez ključa) umesto sa ugašenog Bank of Canada izvora.
+  Pokriva 160+ valuta uključujući **RSD**, unazad do 1999. Provajder preimenovan u
+  `core/plugin/frankfurter_provider.py`. Nepodržane valute tiho koriste fallback (bez WARNING-a).
 
 ---
 

@@ -4,16 +4,34 @@
 # which should be included with this package. The terms are also available at
 # http://www.gnu.org/licenses/gpl-3.0.html
 
+# Originally this fetched rates from the Bank of Canada Valet API, but that source stopped
+# serving most of the currency pairs and date ranges moneyGuru needs, which produced endless
+# "Fetching of <currency> failed" warnings. We now fetch from Frankfurter (https://frankfurter.dev),
+# a free, no-key, ECB-derived currency API. We use its v2 endpoint, which covers 160+ currencies
+# (including RSD) back to 1999. The currency *definitions* below are kept as-is so the available
+# currency list in moneyGuru doesn't change.
+
+import os
 from datetime import date, datetime
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
+from urllib.error import HTTPError
+from urllib.parse import urlencode
 import json
 
-from core.model.currency import RateProviderUnavailable
+# Frankfurter is fronted by a CDN that rejects the default "Python-urllib" User-Agent with a
+# 403, so we send an explicit one.
+_USER_AGENT = 'moneyguru/2.12 (+https://github.com/cvladan/moneyguru)'
+
+# Frankfurter (https://github.com/lineofflight/frankfurter) can be self-hosted. Point moneyGuru at
+# your own instance by setting MG_FRANKFURTER_URL, e.g. http://localhost:8080/v2/rates
+_API_URL = os.environ.get('MG_FRANKFURTER_URL', 'https://api.frankfurter.dev/v2/rates')
+
+from core.model.currency import RateProviderUnavailable, CurrencyNotSupportedException
 from core.plugin import CurrencyProviderPlugin
 
 
-class BOCProviderPlugin(CurrencyProviderPlugin):
-    NAME = 'Bank of Canada currency rates fetcher'
+class FrankfurterProviderPlugin(CurrencyProviderPlugin):
+    NAME = 'Frankfurter currency rates fetcher'
     AUTHOR = "Virgil Dupras"
     ENABLED_BY_DEFAULT = True
 
@@ -179,29 +197,42 @@ class BOCProviderPlugin(CurrencyProviderPlugin):
             exponent=0, start_date=date(1998, 1, 2), start_rate=0.01299, latest_rate=0.01114)
 
     def get_currency_rates(self, currency_code, start_date, end_date):
-        url = 'http://www.bankofcanada.ca/valet/observations/FX{}CAD/json?start_date={}&end_date={}'.format(
-            currency_code,
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d'),
-        )
+        # Frankfurter v2 time series. We ask for the value of 1 `currency_code` in CAD over the
+        # range. Response is a flat list: [{"date", "base", "quote", "rate"}, ...].
+        # Docs: https://frankfurter.dev/
+        params = urlencode({
+            'from': start_date.strftime('%Y-%m-%d'),
+            'to': end_date.strftime('%Y-%m-%d'),
+            'base': currency_code,
+            'quotes': 'CAD',
+        })
+        url = _API_URL + '?' + params
+        request = Request(url, headers={'User-Agent': _USER_AGENT})
         try:
-            with urlopen(url) as response:
-                contents = response.read().decode('ascii')
+            with urlopen(request, timeout=10) as response:
+                contents = response.read().decode('utf-8')
                 results = json.loads(contents)
+        except HTTPError as e:
+            if e.code in (404, 422):
+                # Frankfurter doesn't know this currency (404 = unknown pair, 422 = unprocessable
+                # code). Treat it as "not supported" so we use the fallback rate instead of logging
+                # a (misleading) "temporary problems" warning.
+                raise CurrencyNotSupportedException()
+            raise RateProviderUnavailable()
         except Exception:
             raise RateProviderUnavailable()
 
         def parse(json_item):
-            date = datetime.strptime(json_item['d'], '%Y-%m-%d').date()
+            rate_date = datetime.strptime(json_item['date'], '%Y-%m-%d').date()
             try:
-                value = float(json_item['FX{}CAD'.format(currency_code)]['v'])
-            except (ValueError, KeyError):
+                value = float(json_item['rate'])
+            except (ValueError, KeyError, TypeError):
                 # Cover our ass in cases where we don't have proper keys or values
                 value = None
-            return (date, value)
+            return (rate_date, value)
 
         try:
-            return [parse(item) for item in results['observations']]
+            return [parse(item) for item in results]
         except Exception:
             raise RateProviderUnavailable()
 

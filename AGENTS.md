@@ -99,10 +99,44 @@ nativni "macintosh" stil ignoriše dosta boja iz palete i ostaje taman.
 - **Važno:** menja se TEMPLATE (`support/run.template.py`), ne `run.py` (taj je gitignore-ovan
   i regeneriše se sa `make run.py`).
 
+### 9. Kursevi: Bank of Canada → Frankfurter v2
+**Problem:** log je bio zatrpan `Fetching of <valuta> failed due to temporary problems`.
+Izvor je bio `core/plugin/boc_currency_provider.py` koji gađa Bank of Canada Valet API
+(`http://.../valet/observations/FX{CUR}CAD/json`). BoC je ukinuo većinu tih FX serija i drži
+samo ~26 valuta od 2017-01-03 (potvrđeno gledanjem kako to radi `pricehist`). moneyGuru traži
+valute/datume kojih više nema → svaki neuspeh = WARNING.
+
+**Rešenje:** prelazak na **Frankfurter** (https://frankfurter.dev) — besplatan, bez ključa,
+ECB-bazni API. Koristimo **v2**, koji pokriva 160+ valuta (uključujući **RSD**) unazad do 1999.
+Fajl je preimenovan: `boc_currency_provider.py` → `frankfurter_provider.py`, klasa
+`BOCProviderPlugin` → `FrankfurterProviderPlugin`. Sve definicije valuta su zadržane (lista valuta
+u aplikaciji se ne menja). Ažurirani discovery (`core/plugin/__init__.py`) i testovi.
+
+**Endpoint (bitne zamke):**
+- Putanja je `GET https://api.frankfurter.dev/v2/rates?from=&to=&base=<CUR>&quotes=CAD`.
+  Vraća **ravnu listu** `[{"date","base","quote","rate"}, ...]`.
+- ⚠️ v2 rate putanja je `/v2/rates`. `/v2/latest` i `/v2/{date}..{date}` (kao u v1) **ne postoje
+  u v2** → vraćaju 404. (`/v2/currencies` je samo proširena ISO lista, nije rate-backed na taj način.)
+- ⚠️ Podrazumevani `Python-urllib` User-Agent dobija **403** od CDN-a → šaljemo eksplicitan
+  `User-Agent` header (`_USER_AGENT`).
+- ⚠️ Nepoznata valuta vraća **HTTP 422** (a 404 za nepoznat par). Oba mapiramo na
+  `CurrencyNotSupportedException` → tiho se koristi fallback rate, **bez** WARNING spama.
+- Mrežne/ostale greške → `RateProviderUnavailable` (legitimno „temporary problems").
+
+**Self-host:** bazni URL se čita iz env var `MG_FRANKFURTER_URL` (default
+`https://api.frankfurter.dev/v2/rates`). Frankfurter se može pokrenuti lokalno preko Docker-a
+(`docker run -d -p 8080:8080 lineofflight/frankfurter`) i onda
+`MG_FRANKFURTER_URL=http://localhost:8080/v2/rates`. Vidi README „Kursevi valuta".
+
+Provajderi `yahoo_currency_provider` i `stale_currency_provider` samo definišu valute (ne fetch-uju)
+i nisu dirani.
+
 ### Otvorene stavke / dalje
 - Pravljenje `.app` bundle-a za macOS (PyInstaller/py2app) — još nije rađeno.
 - Windows build (PyQt5 + MSVC/MinGW za ccore) — kasnije.
 - Format-warning u `amount.c` se mogu očistiti (`%lld`/`%llu`) ako se želi čist build.
+- Test suite ne radi na modernom pytest-u (postojeći rot: `conftest.py` koristi uklonjeni
+  `pytest_funcarg__monkeypatch`). Nije vezano za naše izmene; treba zaseban prolaz da se osveži.
 
 ## Konvencije za buduće agente
 
