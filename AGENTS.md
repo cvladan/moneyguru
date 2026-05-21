@@ -106,7 +106,7 @@ nativni "macintosh" stil ignoriše dosta boja iz palete i ostaje taman.
 
 ## Konvencije za buduće agente
 
-- `upstream` remote = `rp42/moneyguru` (povlačenje budućih fixova).
+- Jedina grana je `main`; nema `upstream` remote-a (poreklo `rp42/moneyguru` se ne održava,
+  razvoj ide samostalno).
 - Svaku novu tehničku prepreku i rešenje dopisati u sekciju "Tehnička rešenja".
 - Korisnički vidljive promene (build uputstvo, status) idu i u `README.md` "Dnevnik rada".
-- Ne menjati upstream istoriju; raditi na grani izvedenoj iz `2.12.0_fixes`.

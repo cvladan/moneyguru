@@ -7,24 +7,16 @@ i eventualno nastaviti razvoj.
 
 - Originalni autor: **Virgil Dupras** (`hsoft/moneyguru`) — repo je **obrisan sa GitHub-a**
   (vraća 404). Korisnik `hsoft` i dalje postoji, ali projekta nema.
-- Ovaj fork je nastavak na **[rp42/moneyguru](https://github.com/rp42/moneyguru)**, grana
-  `2.12.0_fixes` — to je verzija 2.12.0 sa minimalnim 2023. ispravkama da radi na modernom
-  Pythonu/Qt-u (npr. `collections.abc` import, `QPainter.drawPie` int cast).
-- `rp42` je dodat kao `upstream` remote radi lakšeg povlačenja budućih ispravki.
+- Kod potiče od **[rp42/moneyguru](https://github.com/rp42/moneyguru)** (grana `2.12.0_fixes`):
+  verzija 2.12.0 sa minimalnim 2023. ispravkama za moderni Python/Qt (`collections.abc` import,
+  `QPainter.drawPie` int cast). Taj projekat se više ne održava, pa ovaj fork ide dalje samostalno
+  (nema `upstream` remote-a).
 
-## Zašto rp42, a ne lenlo (Cocoa)?
+## Zašto ova osnova
 
-Razmatrana su dva forka za macOS:
-
-| | rp42 (ovaj) | lenlo |
-|---|---|---|
-| UI toolkit | **Qt5 / PyQt5** (cross-platform) | Cocoa (nativni macOS, Obj-C + PyObjC) |
-| Skorašnjost | 2023, već zakrpljen za moderni Python | 2017 |
-| Build na Mac-u 2026 | clang + pip PyQt5 — izvodljivo | oživljavanje `objp` bridge-a + stari Xcode projekat — vrlo teško |
-
-Iako je lenlo „nativni macOS", njegov Cocoa build je previše bit-rotovan. rp42 je Qt5, a Qt je
-inherentno cross-platform — autor je samo prestao da *pakuje* Mac/Win build-ove, kod sam može da
-se izgradi. Zato je rp42 realno najbrži put do „radi na Mac-u".
+rp42 je Qt5/PyQt5 — Qt je inherentno cross-platform; autor je samo prestao da *pakuje*
+Mac/Win build-ove, ali kod sam može da se izgradi. Uz to je već zakrpljen za moderni Python
+(2023), pa je realno najbrži put do „radi na Mac-u".
 
 ## Okruženje (testirano)
 
@@ -65,8 +57,8 @@ QT_QPA_PLATFORM=offscreen python ./run.py   # mora startovati event loop bez gre
 
 ## Dnevnik rada
 
-- **2026-05-21** — Forkovan rp42@`2.12.0_fixes`, postavljen na `cvladan/moneyguru`, `rp42`
-  dodat kao `upstream`.
+- **2026-05-21** — Kod uzet sa rp42@`2.12.0_fixes` i postavljen na `cvladan/moneyguru`
+  (jedina grana: `main`).
 - **2026-05-21** — **macOS build USPEŠAN.** Jedina kod-izmena: ispravljena C sintaksna greška
   u `ccore/amount.c` (`if isdigit(c)` → `if (isdigit(c))`, clang je odbijao). C core
   (`_ccore.so`) se kompajlira, Qt resursi i prevodi se generišu, aplikacija se pokreće i drži
