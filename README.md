@@ -71,6 +71,9 @@ QT_QPA_PLATFORM=offscreen python ./run.py   # mora startovati event loop bez gre
   u `ccore/amount.c` (`if isdigit(c)` → `if (isdigit(c))`, clang je odbijao). C core
   (`_ccore.so`) se kompajlira, Qt resursi i prevodi se generišu, aplikacija se pokreće i drži
   Qt event loop (potvrđeno offscreen). Detalji u `AGENTS.md`.
+- **2026-05-21** — Dodata **svetla tema** (Fusion + svetla paleta) u `support/run.template.py`
+  jer je app nasleđivao macOS Dark mode. Vraćanje na sistemsku temu: `MG_THEME=system`
+  (ili `MG_THEME=dark`).
 
 ---
 

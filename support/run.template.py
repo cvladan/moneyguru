@@ -5,14 +5,15 @@
 # which should be included with this package. The terms are also available at
 # http://www.gnu.org/licenses/gpl-3.0.html
 
+import os
 import sys
 import gc
 import logging
 import os.path as op
 
-from PyQt5.QtCore import QFile, QTextStream, QSettings
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import QFile, QTextStream, QSettings, Qt
+from PyQt5.QtGui import QIcon, QPixmap, QPalette, QColor
+from PyQt5.QtWidgets import QApplication, QStyleFactory
 
 import hscommon.trans
 from core.args import get_parser
@@ -22,10 +23,46 @@ from qt.preferences import adjust_after_deserialization
 import qt.mg_rc # noqa
 from qt.plat import BASE_PATH
 
+
+def apply_light_theme(app):
+    """Force a light ("white") appearance, independent of the macOS System
+    Settings -> Appearance (Dark/Light). Disable with MG_THEME=dark or
+    MG_THEME=system. See AGENTS.md for details."""
+    theme = os.environ.get('MG_THEME', 'light').lower()
+    if theme in ('dark', 'system'):
+        return
+    fusion = QStyleFactory.create('Fusion')
+    if fusion is not None:
+        app.setStyle(fusion)
+    white = QColor(255, 255, 255)
+    light = QColor(240, 240, 240)
+    text = QColor(0, 0, 0)
+    disabled = QColor(120, 120, 120)
+    pal = QPalette()
+    pal.setColor(QPalette.Window, light)
+    pal.setColor(QPalette.WindowText, text)
+    pal.setColor(QPalette.Base, white)
+    pal.setColor(QPalette.AlternateBase, light)
+    pal.setColor(QPalette.ToolTipBase, white)
+    pal.setColor(QPalette.ToolTipText, text)
+    pal.setColor(QPalette.Text, text)
+    pal.setColor(QPalette.Button, light)
+    pal.setColor(QPalette.ButtonText, text)
+    pal.setColor(QPalette.BrightText, Qt.red)
+    pal.setColor(QPalette.Highlight, QColor(48, 140, 198))
+    pal.setColor(QPalette.HighlightedText, white)
+    pal.setColor(QPalette.Link, QColor(48, 140, 198))
+    pal.setColor(QPalette.Disabled, QPalette.Text, disabled)
+    pal.setColor(QPalette.Disabled, QPalette.WindowText, disabled)
+    pal.setColor(QPalette.Disabled, QPalette.ButtonText, disabled)
+    app.setPalette(pal)
+
+
 def main():
     parser = get_parser()
     args = parser.parse_args()
     app = QApplication([])
+    apply_light_theme(app)
     app.setWindowIcon(QIcon(QPixmap(":/logo_small")))
     app.setOrganizationName('Hardcoded Software')
     app.setApplicationName('moneyGuru')

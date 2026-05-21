@@ -89,6 +89,16 @@ make PYTHON=python      # PYTHON=python da sub-make ccore koristi venv interpret
 - `QT_QPA_PLATFORM=offscreen python ./run.py` → drži Qt event loop 12s bez greške
   (samo bezopasno "plugin does not support propagateSizeHints()"). Na realnom desktopu = prozor.
 
+### 8. Svetla ("white") tema umesto macOS Dark mode
+moneyGuru nema sopstveno podešavanje teme — Qt na macOS-u nasleđuje sistemski izgled
+(System Settings → Appearance: Dark/Light). Da app bude svetao bez menjanja celog sistema,
+u `support/run.template.py` dodata je `apply_light_theme(app)` (poziva se odmah po kreiranju
+`QApplication`): postavlja **Fusion** stil + eksplicitnu svetlu `QPalette`. Fusion je nužan jer
+nativni "macintosh" stil ignoriše dosta boja iz palete i ostaje taman.
+- Prekidač: `MG_THEME=dark` ili `MG_THEME=system` vraća nasleđivanje sistemske teme; default je `light`.
+- **Važno:** menja se TEMPLATE (`support/run.template.py`), ne `run.py` (taj je gitignore-ovan
+  i regeneriše se sa `make run.py`).
+
 ### Otvorene stavke / dalje
 - Pravljenje `.app` bundle-a za macOS (PyInstaller/py2app) — još nije rađeno.
 - Windows build (PyQt5 + MSVC/MinGW za ccore) — kasnije.
