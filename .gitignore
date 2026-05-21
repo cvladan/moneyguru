@@ -24,3 +24,6 @@ deps
 # ctags
 tags
 
+
+# python venv
+.venv/

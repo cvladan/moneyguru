@@ -36,24 +36,41 @@ se izgradi. Zato je rp42 realno najbrži put do „radi na Mac-u".
 
 > Popunjava se kako rešavamo korak po korak. Vidi `AGENTS.md` za detaljna tehnička objašnjenja.
 
+**Testirano: build i pokretanje rade na macOS 26.5 (Apple Silicon).**
+
 ```bash
 # 1. Build alati (Homebrew)
 brew install pkg-config gettext sqlite python@3.12
 
 # 2. Virtualenv sa Python 3.12 + PyQt5
+#    (pyrcc5/pyuic5 dolaze U SKLOPU PyQt5 wheel-a — nije potreban poseban paket)
 /opt/homebrew/bin/python3.12 -m venv .venv
 source .venv/bin/activate
 pip install PyQt5
 
 # 3. Build (C core + Qt resursi + prevodi)
-make
+#    sqlite je "keg-only" u Homebrew -> mora PKG_CONFIG_PATH za ccore link
+export PKG_CONFIG_PATH="/opt/homebrew/opt/sqlite/lib/pkgconfig"
+make PYTHON=python
+
+# 4. Pokretanje (na svom Mac desktopu prikazaće pravi prozor)
 make run
+```
+
+Smoke test bez prozora (offscreen):
+
+```bash
+QT_QPA_PLATFORM=offscreen python ./run.py   # mora startovati event loop bez greške
 ```
 
 ## Dnevnik rada
 
 - **2026-05-21** — Forkovan rp42@`2.12.0_fixes`, postavljen na `cvladan/moneyguru`, `rp42`
-  dodat kao `upstream`. Započet pokušaj macOS build-a; tehnički detalji u `AGENTS.md`.
+  dodat kao `upstream`.
+- **2026-05-21** — **macOS build USPEŠAN.** Jedina kod-izmena: ispravljena C sintaksna greška
+  u `ccore/amount.c` (`if isdigit(c)` → `if (isdigit(c))`, clang je odbijao). C core
+  (`_ccore.so`) se kompajlira, Qt resursi i prevodi se generišu, aplikacija se pokreće i drži
+  Qt event loop (potvrđeno offscreen). Detalji u `AGENTS.md`.
 
 ---
 

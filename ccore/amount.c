@@ -465,7 +465,7 @@ expr_amount(struct ExprParse *p)
             p->error = true;
             return 0;
         }
-        if isdigit(c) {
+        if (isdigit(c)) {
             had_digit = true;
         }
         buf[i] = c;

@@ -47,12 +47,52 @@ help/        Sphinx dokumentacija
 ## Tehnička rešenja (hronološki)
 
 ### 1. Izbor Pythona 3.12
-PyQt5 (5.15.x) nema wheel za 3.14. Pravimo `.venv` sa `/opt/homebrew/bin/python3.12`.
-Isti interpreter koristimo i za `make -C ccore` (ABI konzistentnost _ccore.so).
+PyQt5 (5.15.11) nema wheel za sistemski 3.14. Pravimo `.venv` sa
+`/opt/homebrew/bin/python3.12`. Isti interpreter koristimo i za `make -C ccore`
+(ABI konzistentnost `_ccore.so`). Instaliran wheel: `PyQt5-5.15.11-cp38-abi3-macosx_11_0_arm64`.
 
-### 2. (u toku) Build koraci
-Beleške o `pyrcc5`, `pkg-config sqlite3`, linkovanju i pokretanju dodaju se ovde kako
-nailazimo na njih.
+### 2. pyrcc5 dolazi sa PyQt5 wheel-om
+Na Linuxu se `pyrcc5` instalira iz `pyqt5-dev-tools`. Na macOS-u **pip PyQt5 wheel već sadrži**
+`.venv/bin/pyrcc5`, `pyuic5`, `pylupdate5` — nije potreban poseban paket. Build se pokreće sa
+`.venv` na PATH-u (ili aktiviranim venv-om) da bi `make` našao `pyrcc5`.
+
+### 3. sqlite3 je keg-only (PKG_CONFIG_PATH)
+`ccore/Makefile` linkuje preko `pkg-config --libs sqlite3`. Homebrew-ov `sqlite` je keg-only,
+pa `sqlite3.pc` nije na default putanji. Rešenje:
+```
+export PKG_CONFIG_PATH="/opt/homebrew/opt/sqlite/lib/pkgconfig"
+```
+Tada `pkg-config --libs sqlite3` → `-L/opt/homebrew/opt/sqlite/lib -lsqlite3`.
+
+### 4. Linkovanje C ekstenzije na macOS-u (radi bez izmena)
+`sysconfig` na 3.12 daje `BLDSHARED = clang -bundle -undefined dynamic_lookup` i prazan
+`BLDLIBRARY` (Python simboli se razrešavaju pri učitavanju — ispravno za ekstenzije na Mac-u).
+Pošto `ccore/Makefile` sve flagove vuče iz `sysconfig`, link prolazi bez ikakvih izmena.
+Ime fajla `_ccore.so` (bez `.cpython-...` sufiksa) se uredno importuje jer je `.so` u
+`importlib.machinery.EXTENSION_SUFFIXES`.
+
+### 5. C fix: `if isdigit(c)` → `if (isdigit(c))` (ccore/amount.c, ~l.468)
+clang odbija `if isdigit(c) {` ("expected '(' after 'if'") — to nikad i nije validan C.
+Dodate zagrade. Ovo je jedina izmena izvornog koda potrebna za macOS build.
+(Upozorenja tipa `%ld` vs `int64_t` su bezopasna i ostavljena.)
+
+### 6. Build komanda (sve zajedno)
+```
+source .venv/bin/activate
+export PKG_CONFIG_PATH="/opt/homebrew/opt/sqlite/lib/pkgconfig"
+make PYTHON=python      # PYTHON=python da sub-make ccore koristi venv interpreter
+```
+
+### 7. Verifikacija
+- `import core.model._ccore` → izlaže `Amount, amount_parse, amount_format, currency_*` (OK).
+- `import core.app; import qt.app` (OK).
+- `QT_QPA_PLATFORM=offscreen python ./run.py` → drži Qt event loop 12s bez greške
+  (samo bezopasno "plugin does not support propagateSizeHints()"). Na realnom desktopu = prozor.
+
+### Otvorene stavke / dalje
+- Pravljenje `.app` bundle-a za macOS (PyInstaller/py2app) — još nije rađeno.
+- Windows build (PyQt5 + MSVC/MinGW za ccore) — kasnije.
+- Format-warning u `amount.c` se mogu očistiti (`%lld`/`%llu`) ako se želi čist build.
 
 ## Konvencije za buduće agente
 
