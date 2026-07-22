@@ -1,4 +1,5 @@
 PYTHON ?= python3
+PYRCC5 ?= $(PYTHON) -m PyQt5.pyrcc_main
 SHEBANG ?= /usr/bin/env $(PYTHON)
 REQ_MINOR_VERSION = 4
 PREFIX ?= /usr/local
@@ -44,7 +45,7 @@ build/help: help/en/changelog.rst help/en/credits.rst
 	$(PYTHON) -m sphinx help/en $@
 
 qt/mg_rc.py : qt/mg.qrc
-	pyrcc5 $< > $@
+	$(PYRCC5) -o $@ $<
 
 run.py: support/run.template.py
 	sed -e 's|@SHEBANG@|#!$(SHEBANG)|' $< > $@
@@ -75,6 +76,9 @@ normpo:
 
 srcpkg:
 	./support/srcpkg.sh
+
+package-macos-arm64:
+	./scripts/build-macos-arm64.sh
 
 install: all pyc
 	install -D run.py $(DESTSHARE)/run.py
@@ -108,4 +112,4 @@ clean:
 	-rm -rf core/model/*.so
 	-rm -rf run.py
 
-.PHONY : clean srcpkg normpo mergepot ccore i18n reqs run pyc install uninstall all
+.PHONY : clean srcpkg normpo mergepot ccore i18n reqs run pyc install uninstall all package-macos-arm64

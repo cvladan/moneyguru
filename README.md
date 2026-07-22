@@ -1,105 +1,96 @@
-# moneyGuru — cvladan fork (macOS revival)
+# moneyGuru, cvladan fork
 
-Lični fork sa ciljem: **kompajlirati i pokrenuti moneyGuru na macOS-u** (a kasnije i Windows),
-i eventualno nastaviti razvoj.
+This fork revives moneyGuru for macOS on Apple Silicon and provides a native application package and Homebrew Cask.
 
-## Poreklo (lanac forkova)
+Intel Macs are not supported.
 
-- Originalni autor: **Virgil Dupras** (`hsoft/moneyguru`) — repo je **obrisan sa GitHub-a**
-  (vraća 404). Korisnik `hsoft` i dalje postoji, ali projekta nema.
-- Kod potiče od **[rp42/moneyguru](https://github.com/rp42/moneyguru)** (grana `2.12.0_fixes`):
-  verzija 2.12.0 sa minimalnim 2023. ispravkama za moderni Python/Qt (`collections.abc` import,
-  `QPainter.drawPie` int cast). Taj projekat se više ne održava, pa ovaj fork ide dalje samostalno
-  (nema `upstream` remote-a).
+## Origin
 
-## Zašto ova osnova
+- Virgil Dupras created the original `hsoft/moneyguru` project. That repository has since been removed from GitHub.
+- This code started from the [`rp42/moneyguru`](https://github.com/rp42/moneyguru) `2.12.0_fixes` branch. It contains moneyGuru 2.12.0 and small fixes for modern Python and Qt.
+- The rp42 fork is no longer maintained. This repository continues independently and has no `upstream` remote.
 
-rp42 je Qt5/PyQt5 — Qt je inherentno cross-platform; autor je samo prestao da *pakuje*
-Mac/Win build-ove, ali kod sam može da se izgradi. Uz to je već zakrpljen za moderni Python
-(2023), pa je realno najbrži put do „radi na Mac-u".
+## Install with Homebrew
 
-## Okruženje (testirano)
-
-- macOS 26.5 (Apple Silicon), Xcode Command Line Tools (clang)
-- Homebrew: `pkg-config`, `gettext`, `sqlite`, `python@3.12`
-- Build Python: **3.12** (PyQt5 ima wheel-ove; sistemski 3.14 je prenov za PyQt5)
-
-## Kursevi valuta (currency API)
-
-Kursevi se povlače sa **Frankfurter** ([github.com/lineofflight/frankfurter](https://github.com/lineofflight/frankfurter)) —
-besplatan, open-source, ECB-bazni API bez ključa. Koristimo javnu instancu
-`https://api.frankfurter.dev/v2/rates` (160+ valuta uključujući RSD, podaci od 1999).
-
-Frankfurter se **može i self-hostovati** preko Docker-a ako želiš da zahtevi ostanu u tvojoj
-infrastrukturi:
-
-```bash
-# ephemerna baza (za probu)
-docker run -d -p 8080:8080 lineofflight/frankfurter
-# ili sa perzistentnim SQLite-om
-docker run -d -p 8080:8080 -e DATABASE_URL="sqlite:///data/db.sqlite3" \
-  -v ./data:/data --pull always lineofflight/frankfurter
+```sh
+brew install --cask cvladan/tap/moneyguru
 ```
 
-Zatim usmeri moneyGuru na svoju instancu env varijablom:
+The current package is built only for Apple Silicon and requires macOS 11 or newer. It is ad hoc signed because the build machine has no Apple Developer ID certificate. If Gatekeeper blocks the first launch, right click `moneyGuru.app`, choose Open, and confirm the prompt.
 
-```bash
-MG_FRANKFURTER_URL="http://localhost:8080/v2/rates" make run
-```
+See [Homebrew distribution](docs/homebrew.md) for release details and verification commands.
 
-(Nova instanca pri prvom pokretanju radi „backfill", pa neki endpointi nakratko mogu vraćati
-prazne podatke. Detalji: https://frankfurter.dev/deploy)
+## Build from source
 
-## Build na macOS — uputstvo
+The tested environment is macOS 26.5 on Apple Silicon with Xcode Command Line Tools.
 
-> Popunjava se kako rešavamo korak po korak. Vidi `AGENTS.md` za detaljna tehnička objašnjenja.
+```sh
+brew install pkgconf gettext sqlite python@3.12
 
-**Testirano: build i pokretanje rade na macOS 26.5 (Apple Silicon).**
-
-```bash
-# 1. Build alati (Homebrew)
-brew install pkg-config gettext sqlite python@3.12
-
-# 2. Virtualenv sa Python 3.12 + PyQt5
-#    (pyrcc5/pyuic5 dolaze U SKLOPU PyQt5 wheel-a — nije potreban poseban paket)
 /opt/homebrew/bin/python3.12 -m venv .venv
-source .venv/bin/activate
-pip install PyQt5
+.venv/bin/python -m pip install -r requirements-macos.txt
 
-# 3. Build (C core + Qt resursi + prevodi)
-#    sqlite je "keg-only" u Homebrew -> mora PKG_CONFIG_PATH za ccore link
 export PKG_CONFIG_PATH="/opt/homebrew/opt/sqlite/lib/pkgconfig"
-make PYTHON=python
-
-# 4. Pokretanje (na svom Mac desktopu prikazaće pravi prozor)
+make PYTHON=.venv/bin/python
 make run
 ```
 
-Smoke test bez prozora (offscreen):
+The application uses Python 3.12 because PyQt5 does not provide a compatible wheel for the system Python 3.14.
 
-```bash
-QT_QPA_PLATFORM=offscreen python ./run.py   # mora startovati event loop bez greške
+For a launch test without a visible window:
+
+```sh
+QT_QPA_PLATFORM=offscreen .venv/bin/python ./run.py
 ```
 
-## Dnevnik rada
+## Build the Apple Silicon application
 
-- **2026-05-21** — Kod uzet sa rp42@`2.12.0_fixes` i postavljen na `cvladan/moneyguru`
-  (jedina grana: `main`).
-- **2026-05-21** — **macOS build USPEŠAN.** Jedina kod-izmena: ispravljena C sintaksna greška
-  u `ccore/amount.c` (`if isdigit(c)` → `if (isdigit(c))`, clang je odbijao). C core
-  (`_ccore.so`) se kompajlira, Qt resursi i prevodi se generišu, aplikacija se pokreće i drži
-  Qt event loop (potvrđeno offscreen). Detalji u `AGENTS.md`.
-- **2026-05-21** — Dodata **svetla tema** (Fusion + svetla paleta) u `support/run.template.py`
-  jer je app nasleđivao macOS Dark mode. Vraćanje na sistemsku temu: `MG_THEME=system`
-  (ili `MG_THEME=dark`).
-- **2026-05-21** — Rešen `Fetching of <valuta> failed` spam: kursevi se sada povlače sa
-  **Frankfurter v2** (ECB-bazni, besplatan, bez ključa) umesto sa ugašenog Bank of Canada izvora.
-  Pokriva 160+ valuta uključujući **RSD**, unazad do 1999. Provajder preimenovan u
-  `core/plugin/frankfurter_provider.py`. Nepodržane valute tiho koriste fallback (bez WARNING-a).
+After creating `.venv` and installing `requirements-macos.txt`, run:
+
+```sh
+make package-macos-arm64
+```
+
+The command creates:
+
+- `dist/moneyGuru.app`
+- `dist/moneyGuru-2.12.0-arm64.zip`
+
+The packaging script rejects Intel hosts and non ARM64 Python interpreters. It checks every Mach O file, verifies the application signature, and runs a five second launch test before creating the ZIP.
+
+See [macOS Apple Silicon packaging](docs/macos-packaging.md) for the complete build and signing procedure.
+
+## Currency rates
+
+moneyGuru fetches rates from [Frankfurter](https://frankfurter.dev), a free and open source API based on central bank data. The public endpoint is `https://api.frankfurter.dev/v2/rates`. It supports more than 160 currencies, including RSD, with data from 1999.
+
+You can run Frankfurter locally:
+
+```sh
+docker run -d -p 8080:8080 lineofflight/frankfurter
+```
+
+Then point moneyGuru at the local service:
+
+```sh
+MG_FRANKFURTER_URL="http://localhost:8080/v2/rates" make run
+```
+
+A new local Frankfurter instance performs an initial data import, so some endpoints may briefly return no data. See the [Frankfurter deployment guide](https://frankfurter.dev/deploy) for persistent storage and operational details.
+
+## Work log
+
+- 2026-05-21: Imported the `rp42/moneyguru` `2.12.0_fixes` branch and continued development on `main`.
+- 2026-05-21: Completed the first successful Apple Silicon source build. Fixed invalid C syntax in `ccore/amount.c`, compiled the C core, generated Qt resources and translations, and verified the Qt event loop.
+- 2026-05-21: Added the default light Fusion theme. Set `MG_THEME=system` or `MG_THEME=dark` to keep the system appearance.
+- 2026-05-21: Replaced the retired Bank of Canada currency source with Frankfurter v2 and added RSD support.
+- 2026-07-22: Added the reproducible Apple Silicon application package, ARM64 validation, code signature verification, launch testing, ZIP release artefact, and Homebrew Cask workflow.
+
+Technical implementation notes live in [AGENTS.md](AGENTS.md).
 
 ---
 
-# moneyGuru (originalni README)
+# moneyGuru, original README
 
 [moneyGuru][moneyguru] is a personal finance management application. With it,
 you can evaluate your financial situation so you can make informed (and thus
@@ -120,7 +111,7 @@ up-to-date and "in your face".
 * support: various files to help with the build process.
 * hscommon: A collection of helpers used across HS applications.
 
-## How to build moneyGuru from source (original, Linux)
+## How to build moneyGuru from source, original Linux instructions
 
 ### Prerequisites
 

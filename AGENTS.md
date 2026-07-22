@@ -1,146 +1,162 @@
-# AGENTS.md — tehnička beleška za moneyGuru (cvladan fork)
+# AGENTS.md: technical notes for moneyGuru, cvladan fork
 
-Ovaj fajl je tehnički dnevnik: arhitektura, build pipeline, i **sva tehnička rešenja**
-(problemi na koje naiđemo i kako su rešeni). README.md je za korisnika; ovde idu detalji.
+This file is the technical journal for architecture, the build pipeline, and every technical problem and solution. `README.md` is for users. Implementation details belong here.
 
-## Cilj
+All repository documentation, code comments, identifiers, interface text, filenames, and metadata must be written in English.
 
-Kompajlirati i pokrenuti moneyGuru na **macOS** (Apple Silicon), pa kasnije i Windows.
-Polazna osnova: `rp42/moneyguru` grana `2.12.0_fixes` (Qt5 + C core).
+## Objective
 
-## Arhitektura
+Compile, package, and run moneyGuru on macOS for Apple Silicon. Intel macOS is not supported. Windows work may be considered separately in the future.
 
+The starting point is the `2.12.0_fixes` branch from `rp42/moneyguru`, which uses Qt 5 and a C core.
+
+## Architecture
+
+```text
+ccore/      C very core: currency.c, amount.c, py_ccore.c -> _ccore.so
+core/       Python core logic and model state. Loads core/model/_ccore.so
+qt/         PyQt5 interface. Generates mg_rc.py from mg.qrc with pyrcc5
+hscommon/   Shared helper modules
+locale/     Translations compiled from .po to .mo with msgfmt
+support/    Build helpers and run.template.py
+images/     Application resources and macOS icons
+help/       Sphinx documentation
+scripts/    Reproducible packaging scripts
 ```
-ccore/      C "very core": currency.c, amount.c, py_ccore.c  -> _ccore.so (CPython ekstenzija)
-core/       Python core logika (model, gui state). Učitava core/model/_ccore.so
-qt/         PyQt5 UI (mg_rc.py se generiše iz mg.qrc preko pyrcc5)
-hscommon/   HS deljeni helperi
-locale/     .po prevodi -> .mo (msgfmt)
-support/    build pomoćnici (run.template.py, skripte)
-images/     resursi
-help/        Sphinx dokumentacija
-```
 
-## Build pipeline (iz Makefile-a)
+## Source build pipeline
 
-`make` (target `all`) radi:
-1. `qt/mg_rc.py` ← `pyrcc5 qt/mg.qrc` (kompajlira Qt resurse u Python modul)
-2. `run.py` ← iz `support/run.template.py` (sed zamena `@SHEBANG@`)
-3. `core/model/_ccore.so` ← `make -C ccore` pa kopiranje u `core/model`
-4. `i18n`: svaki `locale/*/LC_MESSAGES/*.po` → `.mo` preko `msgfmt`
-5. `reqs`: provera Python ≥ 3.4 i da `import PyQt5` radi
+The default `make` target performs these steps:
 
-### ccore/Makefile
-- Kompajlira `currency.c amount.c py_ccore.c` → `_ccore.so`.
-- Sve flagove vuče iz `python -c "import sysconfig; ..."` (CC, BLDSHARED, BLDLIBRARY,
-  CFLAGS, INCLUDEPY) — zato je **portabilno**: na macOS-u sysconfig daje
-  `clang -bundle -undefined dynamic_lookup`.
-- Linkuje: `pkg-config --libs sqlite3` + `BLDLIBRARY`.
-- **Bitno:** mora se graditi istim Pythonom kojim se i pokreće (ABI). Koristimo venv 3.12.
+1. Generates `qt/mg_rc.py` from `qt/mg.qrc` with the selected Python interpreter.
+2. Generates `run.py` from `support/run.template.py` and replaces `@SHEBANG@`.
+3. Builds `core/model/_ccore.so` through `ccore/Makefile` and copies it into the Python package.
+4. Compiles every `locale/*/LC_MESSAGES/*.po` file to `.mo` with `msgfmt`.
+5. Verifies the Python version and checks that `PyQt5` imports successfully.
 
-## Okruženje
+### C core
 
-- macOS 26.5, Apple Silicon, clang iz Command Line Tools.
-- Homebrew: `pkg-config` (pkgconf), `gettext` (msgfmt), `sqlite`, `python@3.12`.
-- Sistemski `python3` je 3.14.5 — **prenov za PyQt5 wheel-ove**, zato koristimo 3.12.
+`ccore/Makefile` compiles `currency.c`, `amount.c`, and `py_ccore.c` into `_ccore.so`.
 
-## Tehnička rešenja (hronološki)
+The compiler, linker command, Python library settings, flags, and include path come from `sysconfig`. On macOS, Python 3.12 supplies `clang -bundle -undefined dynamic_lookup`. SQLite linker flags come from `pkg-config`.
 
-### 1. Izbor Pythona 3.12
-PyQt5 (5.15.11) nema wheel za sistemski 3.14. Pravimo `.venv` sa
-`/opt/homebrew/bin/python3.12`. Isti interpreter koristimo i za `make -C ccore`
-(ABI konzistentnost `_ccore.so`). Instaliran wheel: `PyQt5-5.15.11-cp38-abi3-macosx_11_0_arm64`.
+The C extension must be built with the same Python interpreter that runs or packages the application. The supported build interpreter is ARM64 Python 3.12.
 
-### 2. pyrcc5 dolazi sa PyQt5 wheel-om
-Na Linuxu se `pyrcc5` instalira iz `pyqt5-dev-tools`. Na macOS-u **pip PyQt5 wheel već sadrži**
-`.venv/bin/pyrcc5`, `pyuic5`, `pylupdate5` — nije potreban poseban paket. Build se pokreće sa
-`.venv` na PATH-u (ili aktiviranim venv-om) da bi `make` našao `pyrcc5`.
+## Tested environment
 
-### 3. sqlite3 je keg-only (PKG_CONFIG_PATH)
-`ccore/Makefile` linkuje preko `pkg-config --libs sqlite3`. Homebrew-ov `sqlite` je keg-only,
-pa `sqlite3.pc` nije na default putanji. Rešenje:
-```
+- macOS 26.5 on Apple Silicon
+- Xcode Command Line Tools and clang
+- Homebrew `pkgconf`, `gettext`, `sqlite`, and `python@3.12`
+- PyQt5 5.15.11
+- PyInstaller 6.21.0
+
+The system Python 3.14 is too new for the available PyQt5 wheels, so all source and package builds use Homebrew Python 3.12.
+
+## Technical solutions
+
+### 1. Python 3.12
+
+PyQt5 5.15.11 has no wheel for the system Python 3.14. Create `.venv` with `/opt/homebrew/bin/python3.12`. Use the same interpreter for the C extension to preserve ABI compatibility.
+
+The installed PyQt5 wheel is `PyQt5-5.15.11-cp38-abi3-macosx_11_0_arm64`.
+
+### 2. Qt resource compiler
+
+The PyQt5 wheel includes `pyrcc5`, `pyuic5`, and `pylupdate5`. A separate development tools package is not required on macOS.
+
+The Makefile invokes `$(PYTHON) -m PyQt5.pyrcc_main` instead of relying on the generated `pyrcc5` script. This keeps resource generation tied to the selected Python and also works when a virtual environment has moved and its old script shebang is stale.
+
+### 3. Homebrew SQLite and pkg-config
+
+Homebrew SQLite is keg only, so expose its metadata before compiling the C core:
+
+```sh
 export PKG_CONFIG_PATH="/opt/homebrew/opt/sqlite/lib/pkgconfig"
 ```
-Tada `pkg-config --libs sqlite3` → `-L/opt/homebrew/opt/sqlite/lib -lsqlite3`.
 
-### 4. Linkovanje C ekstenzije na macOS-u (radi bez izmena)
-`sysconfig` na 3.12 daje `BLDSHARED = clang -bundle -undefined dynamic_lookup` i prazan
-`BLDLIBRARY` (Python simboli se razrešavaju pri učitavanju — ispravno za ekstenzije na Mac-u).
-Pošto `ccore/Makefile` sve flagove vuče iz `sysconfig`, link prolazi bez ikakvih izmena.
-Ime fajla `_ccore.so` (bez `.cpython-...` sufiksa) se uredno importuje jer je `.so` u
-`importlib.machinery.EXTENSION_SUFFIXES`.
+`pkg-config --libs sqlite3` then returns the Homebrew library path and `-lsqlite3`.
 
-### 5. C fix: `if isdigit(c)` → `if (isdigit(c))` (ccore/amount.c, ~l.468)
-clang odbija `if isdigit(c) {` ("expected '(' after 'if'") — to nikad i nije validan C.
-Dodate zagrade. Ovo je jedina izmena izvornog koda potrebna za macOS build.
-(Upozorenja tipa `%ld` vs `int64_t` su bezopasna i ostavljena.)
+The C core Makefile now fails with a clear message if `pkg-config` is missing or cannot find SQLite. The old backtick command could print an error and still let clang create an extension with unresolved SQLite symbols.
 
-### 6. Build komanda (sve zajedno)
-```
+### 4. macOS extension linking
+
+Python 3.12 reports `BLDSHARED = clang -bundle -undefined dynamic_lookup` and an empty `BLDLIBRARY`. Python symbols are resolved when the extension loads, which is correct on macOS.
+
+The filename `_ccore.so` imports successfully because `.so` is present in `importlib.machinery.EXTENSION_SUFFIXES`.
+
+### 5. C syntax fix
+
+Clang rejects `if isdigit(c) {` because it is not valid C. `ccore/amount.c` now uses `if (isdigit(c)) {`.
+
+The remaining `int64_t` format warnings are harmless and are intentionally unchanged.
+
+### 6. Source build command
+
+```sh
 source .venv/bin/activate
 export PKG_CONFIG_PATH="/opt/homebrew/opt/sqlite/lib/pkgconfig"
-make PYTHON=python      # PYTHON=python da sub-make ccore koristi venv interpreter
+make PYTHON=python
 ```
 
-### 7. Verifikacija
-- `import core.model._ccore` → izlaže `Amount, amount_parse, amount_format, currency_*` (OK).
-- `import core.app; import qt.app` (OK).
-- `QT_QPA_PLATFORM=offscreen python ./run.py` → drži Qt event loop 12s bez greške
-  (samo bezopasno "plugin does not support propagateSizeHints()"). Na realnom desktopu = prozor.
+### 7. Source build verification
 
-### 8. Svetla ("white") tema umesto macOS Dark mode
-moneyGuru nema sopstveno podešavanje teme — Qt na macOS-u nasleđuje sistemski izgled
-(System Settings → Appearance: Dark/Light). Da app bude svetao bez menjanja celog sistema,
-u `support/run.template.py` dodata je `apply_light_theme(app)` (poziva se odmah po kreiranju
-`QApplication`): postavlja **Fusion** stil + eksplicitnu svetlu `QPalette`. Fusion je nužan jer
-nativni "macintosh" stil ignoriše dosta boja iz palete i ostaje taman.
-- Prekidač: `MG_THEME=dark` ili `MG_THEME=system` vraća nasleđivanje sistemske teme; default je `light`.
-- **Važno:** menja se TEMPLATE (`support/run.template.py`), ne `run.py` (taj je gitignore-ovan
-  i regeneriše se sa `make run.py`).
+- `import core.model._ccore` exposes `Amount`, parsing, formatting, and currency functions.
+- `import core.app; import qt.app` succeeds.
+- `QT_QPA_PLATFORM=offscreen python ./run.py` keeps the Qt event loop running. The `propagateSizeHints()` message from the offscreen plugin is harmless.
 
-### 9. Kursevi: Bank of Canada → Frankfurter v2
-**Problem:** log je bio zatrpan `Fetching of <valuta> failed due to temporary problems`.
-Izvor je bio `core/plugin/boc_currency_provider.py` koji gađa Bank of Canada Valet API
-(`http://.../valet/observations/FX{CUR}CAD/json`). BoC je ukinuo većinu tih FX serija i drži
-samo ~26 valuta od 2017-01-03 (potvrđeno gledanjem kako to radi `pricehist`). moneyGuru traži
-valute/datume kojih više nema → svaki neuspeh = WARNING.
+### 8. Light theme
 
-**Rešenje:** prelazak na **Frankfurter** (https://frankfurter.dev) — besplatan, bez ključa,
-ECB-bazni API. Koristimo **v2**, koji pokriva 160+ valuta (uključujući **RSD**) unazad do 1999.
-Fajl je preimenovan: `boc_currency_provider.py` → `frankfurter_provider.py`, klasa
-`BOCProviderPlugin` → `FrankfurterProviderPlugin`. Sve definicije valuta su zadržane (lista valuta
-u aplikaciji se ne menja). Ažurirani discovery (`core/plugin/__init__.py`) i testovi.
+moneyGuru has no application theme setting. Qt normally inherits the macOS system appearance. `support/run.template.py` applies the Fusion style and an explicit light palette by default so the interface stays light without changing macOS settings.
 
-**Endpoint (bitne zamke):**
-- Putanja je `GET https://api.frankfurter.dev/v2/rates?from=&to=&base=<CUR>&quotes=CAD`.
-  Vraća **ravnu listu** `[{"date","base","quote","rate"}, ...]`.
-- ⚠️ v2 rate putanja je `/v2/rates`. `/v2/latest` i `/v2/{date}..{date}` (kao u v1) **ne postoje
-  u v2** → vraćaju 404. (`/v2/currencies` je samo proširena ISO lista, nije rate-backed na taj način.)
-- ⚠️ Podrazumevani `Python-urllib` User-Agent dobija **403** od CDN-a → šaljemo eksplicitan
-  `User-Agent` header (`_USER_AGENT`).
-- ⚠️ Nepoznata valuta vraća **HTTP 422** (a 404 za nepoznat par). Oba mapiramo na
-  `CurrencyNotSupportedException` → tiho se koristi fallback rate, **bez** WARNING spama.
-- Mrežne/ostale greške → `RateProviderUnavailable` (legitimno „temporary problems").
+Set `MG_THEME=dark` or `MG_THEME=system` to retain the system appearance. Edit the template, not generated `run.py`.
 
-**Self-host:** bazni URL se čita iz env var `MG_FRANKFURTER_URL` (default
-`https://api.frankfurter.dev/v2/rates`). Frankfurter se može pokrenuti lokalno preko Docker-a
-(`docker run -d -p 8080:8080 lineofflight/frankfurter`) i onda
-`MG_FRANKFURTER_URL=http://localhost:8080/v2/rates`. Vidi README „Kursevi valuta".
+### 9. Frankfurter currency rates
 
-Provajderi `yahoo_currency_provider` i `stale_currency_provider` samo definišu valute (ne fetch-uju)
-i nisu dirani.
+The Bank of Canada Valet API no longer provides most currency series that moneyGuru requests. The repeated failures filled the log with temporary problem warnings.
 
-### Otvorene stavke / dalje
-- Pravljenje `.app` bundle-a za macOS (PyInstaller/py2app) — još nije rađeno.
-- Windows build (PyQt5 + MSVC/MinGW za ccore) — kasnije.
-- Format-warning u `amount.c` se mogu očistiti (`%lld`/`%llu`) ako se želi čist build.
-- Test suite ne radi na modernom pytest-u (postojeći rot: `conftest.py` koristi uklonjeni
-  `pytest_funcarg__monkeypatch`). Nije vezano za naše izmene; treba zaseban prolaz da se osveži.
+`core/plugin/frankfurter_provider.py` uses the free Frankfurter v2 API at `https://api.frankfurter.dev/v2/rates`. It supports more than 160 currencies, including RSD, with data from 1999. The application keeps its existing currency definitions.
 
-## Konvencije za buduće agente
+Important API details:
 
-- Jedina grana je `main`; nema `upstream` remote-a (poreklo `rp42/moneyguru` se ne održava,
-  razvoj ide samostalno).
-- Svaku novu tehničku prepreku i rešenje dopisati u sekciju "Tehnička rešenja".
-- Korisnički vidljive promene (build uputstvo, status) idu i u `README.md` "Dnevnik rada".
+- Rates use `GET /v2/rates?from=&to=&base=<CUR>&quotes=CAD` and return a flat JSON list.
+- The v1 style `/v2/latest` and dated path variants do not exist.
+- The CDN rejects the default Python urllib user agent, so the provider sends an explicit user agent.
+- HTTP 404 and 422 mean the pair or currency is unsupported. They map to `CurrencyNotSupportedException`, which allows the quiet fallback rate.
+- Network and other service errors map to `RateProviderUnavailable`.
+
+Set `MG_FRANKFURTER_URL` to use a self hosted service, for example `http://localhost:8080/v2/rates`.
+
+### 10. Apple Silicon application package
+
+`make package-macos-arm64` runs `scripts/build-macos-arm64.sh`. The script refuses to run unless both the host and Python interpreter are ARM64. It requires Python 3.12, builds generated resources and the C core, and creates the application with the versioned `moneyGuru.spec` file.
+
+The PyInstaller bundle uses one directory mode, embeds the GPL licence and only compiled translations, requires macOS 11 or newer, and uses `com.cvladan.moneyguru` as its bundle identifier.
+
+Every Mach O file in the bundle must contain an ARM64 slice. The script also verifies the complete code signature and runs the packaged application for five seconds with the Qt offscreen platform. It then creates `dist/moneyGuru-<version>-arm64.zip` and prints its SHA 256 checksum.
+
+PyInstaller applies an ad hoc signature when `CODESIGN_IDENTITY` is empty. Set that environment variable to an installed Developer ID Application identity for a distributable Apple signature. Notarization still requires Apple credentials and is a separate release step.
+
+The PyInstaller configuration directory stays under `build/` so packaging does not depend on write access to `~/Library/Application Support/pyinstaller`.
+
+PyInstaller `argv_emulation` was tested for Finder document opening but caused the packaged application to abort while connecting to Launch Services in the offscreen launch test. It remains disabled. Documents open normally through the application File menus.
+
+### 11. Homebrew Cask distribution
+
+The companion tap is `cvladan/homebrew-tap`. Its `moneyguru` Cask downloads the versioned ARM64 ZIP from the matching GitHub release, verifies its SHA 256 checksum, requires Apple Silicon and macOS 11 or newer, and installs `moneyGuru.app` into `/Applications`.
+
+The first package is ad hoc signed because no Developer ID identity is installed on the build machine. macOS Gatekeeper may therefore require the user to approve the application on first launch. See `docs/homebrew.md` for the release and installation procedure.
+
+## Open work
+
+- Add Developer ID signing and Apple notarization when credentials are available.
+- Consider Windows support as a separate project.
+- Clean the existing `amount.c` format warnings if a warning free build becomes a priority.
+- Modernise the old pytest fixtures. The current suite uses the removed `pytest_funcarg__monkeypatch` hook and does not run on current pytest.
+
+## Conventions for future agents
+
+- `main` is the only branch. There is no `upstream` remote because development continues independently.
+- Record every new technical obstacle and solution in the `Technical solutions` section.
+- Add user visible build and release changes to the `README.md` work log.
+- Keep all repository documentation and human facing artefacts in English.
+- Package only for macOS on Apple Silicon unless the user explicitly changes the supported platform scope.
